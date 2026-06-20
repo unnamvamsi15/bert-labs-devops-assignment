@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise DevOps Playbook - Implementation Guide</title>
+    <style>
+        /* Professional Black and White Theme */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            line-height: 1.6; 
+            color: #000; 
+            background-color: #fff; 
+            margin: 0 auto; 
+            padding: 40px; 
+            max-width: 1000px;
+        }
+        h1 { font-size: 2.5em; border-bottom: 3px solid #000; padding-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;}
+        h2 { font-size: 1.8em; border-bottom: 2px solid #000; padding-bottom: 8px; margin-top: 40px; }
+        h3 { font-size: 1.4em; border-bottom: 1px dashed #666; padding-bottom: 5px; margin-top: 30px;}
+        p, li { font-size: 1.1em; }
+        code { 
+            font-family: Consolas, "Courier New", monospace; 
+            background-color: #f4f4f4; 
+            border: 1px solid #ccc; 
+            padding: 2px 6px; 
+            font-size: 0.9em;
+        }
+        pre { 
+            font-family: Consolas, "Courier New", monospace; 
+            background-color: #f9f9f9; 
+            border: 1px solid #000; 
+            padding: 15px; 
+            overflow-x: auto; 
+            font-size: 0.9em;
+            box-shadow: 2px 2px 0px #000;
+        }
+        .note { 
+            border-left: 5px solid #000; 
+            background-color: #f4f4f4; 
+            padding: 15px; 
+            margin: 20px 0; 
+            font-weight: 500;
+        }
+        .warning {
+            border: 2px solid #000;
+            padding: 15px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            text-transform: uppercase;
+        }
+        a { color: #000; text-decoration: underline; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #000; padding: 12px; text-align: left; }
+        th { background-color: #e0e0e0; font-weight: bold; }
+        .toc { border: 1px solid #000; padding: 20px; background-color: #fafafa; margin-bottom: 40px; }
+        .toc ul { list-style-type: none; padding-left: 0; }
+        .toc li { margin-bottom: 8px; }
+        .toc a { text-decoration: none; font-weight: normal; }
+        .toc a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+    <h1>Enterprise DevOps Playbook</h1>
+    <p><strong>Version:</strong> 1.0 | <strong>Target Audience:</strong> Junior & Mid-level DevOps Engineers</p>
+    <div class="warning">
+        Confidential & Proprietary - Internal Use Only<br>
+        This document contains production-grade configurations adhering to industry-standard security and scalability best practices.
+    </div>
+
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#intro">1. Architecture Overview & Best Practices</a></li>
+            <li><a href="#docker">2. Containerization (Docker)</a></li>
+            <li><a href="#terraform">3. Infrastructure as Code (Terraform & AWS EKS)</a></li>
+            <li><a href="#kubernetes">4. Container Orchestration (Kubernetes)</a></li>
+            <li><a href="#cicd">5. Continuous Integration & Deployment (CI/CD)</a></li>
+            <li><a href="#monitoring">6. Monitoring & Observability</a></li>
+            <li><a href="#troubleshooting">7. Operational Troubleshooting Guide</a></li>
+        </ul>
+    </div>
+
+    <h2 id="intro">1. Architecture Overview & Best Practices</h2>
+    <p>This document outlines the deployment strategy for a cloud-native web application consisting of a React Frontend and a Node.js (Express) Backend. As a Junior DevOps Engineer, your goal is to follow these steps precisely to achieve a production-ready environment.</p>
+    
+    <h3>Core Principles Applied:</h3>
+    <ul>
+        <li><strong>Security:</strong> Principle of least privilege (non-root containers, IAM roles), encrypted state files, and secrets management.</li>
+        <li><strong>Scalability:</strong> Horizontal Pod Autoscaling (HPA), Cluster Autoscaler, and Stateless application design.</li>
+        <li><strong>Reliability:</strong> Multi-AZ (Availability Zone) deployments, readiness/liveness probes, and rolling updates with zero downtime.</li>
+        <li><strong>Automation:</strong> Everything as Code (IaC, CI/CD). No manual changes in production.</li>
+    </ul>
+
+    <h2 id="docker">2. Containerization (Docker)</h2>
+    <p>We use Docker to package the application. Both Dockerfiles implement multi-stage builds to minimize the final image size and reduce the attack surface.</p>
+
+    <h3>2.1 Backend Dockerfile</h3>
+    <p>Create a file named <code>Dockerfile</code> inside the <code>backend/</code> directory.</p>
+<pre>
+# Use specific LTS Alpine image for security and size
+FROM node:18-alpine
+
+# Set Node environment to production
+ENV NODE_ENV=production
+
+# Create app directory and set ownership to node user
+WORKDIR /usr/src/app
+RUN chown -R node:node /usr/src/app
+
+# Switch to non-root user (Security Best Practice)
+USER node
+
+# Install dependencies first (leverage Docker cache)
+COPY --chown=node:node package*.json ./
+RUN npm ci --only=production
+
+# Copy application source code
+COPY --chown=node:node . .
+
+# Expose the port the app binds to
+EXPOSE 3001
+
+# Start the application
+CMD [ "node", "server.js" ]
+</pre>
+    <div class="note"><strong>Why this is production-ready:</strong> We use <code>npm ci</code> for deterministic builds. Running as the <code>node</code> user instead of root prevents privilege escalation attacks if the container is compromised.</div>
+
+    <h3>2.2 Frontend Dockerfile</h3>
+    <p>Create a file named <code>Dockerfile</code> inside the <code>frontend/</code> directory.</p>
+<pre>
+# Stage 1: Build the React application
+FROM node:18-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve the app with Nginx
+FROM nginx:1.25-alpine
+# Copy built assets from the build stage
+COPY --from=build /app/build /usr/share/nginx/html
+# Expose port 80
+EXPOSE 80
+# Run Nginx in foreground
+CMD ["nginx", "-g", "daemon off;"]
+</pre>
+
+    <h2 id="terraform">3. Infrastructure as Code (Terraform & AWS EKS)</h2>
+    <p>We provision our infrastructure using Terraform. For this playbook, we target AWS and Elastic Kubernetes Service (EKS).</p>
+    
+    <h3>3.1 Remote State Configuration (Security & Collaboration)</h3>
+    <p>Never store Terraform state locally. Create a <code>provider.tf</code> file:</p>
+<pre>
+terraform {
+  backend "s3" {
+    bucket         = "company-production-terraform-state"
+    key            = "app/production/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-locks" # Prevents concurrent modifications
+    encrypt        = true
+  }
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+</pre>
+
+    <h3>3.2 Provisioning the EKS Cluster</h3>
+    <p>Create a <code>main.tf</code> file. We utilize the official AWS EKS module for best practices.</p>
+<pre>
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.0.0"
+
+  name = "production-vpc"
+  cidr = "10.0.0.0/16"
+  azs  = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+  enable_nat_gateway = true
+  single_nat_gateway = false # High Availability
+}
+
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 19.0"
+
+  cluster_name    = "production-cluster"
+  cluster_version = "1.28"
+
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnets
+  control_plane_subnet_ids = module.vpc.public_subnets
+
+  eks_managed_node_groups = {
+    app_nodes = {
+      min_size     = 2
+      max_size     = 10
+      desired_size = 3
+      instance_types = ["t3.medium"]
+    }
+  }
+}
+</pre>
+    <p><strong>Execution Steps:</strong> Run <code>terraform init</code>, followed by <code>terraform plan</code>, and finally <code>terraform apply</code>.</p>
+
+    <h2 id="kubernetes">4. Container Orchestration (Kubernetes)</h2>
+    <p>Once EKS is up, we deploy our application using Kubernetes manifests. Create a directory named <code>k8s/</code>.</p>
+
+    <h3>4.1 Backend Deployment & Service (<code>k8s/backend.yaml</code>)</h3>
+<pre>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: production
+spec:
+  replicas: 3 # High Availability
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: your-registry.com/backend:latest
+        ports:
+        - containerPort: 3001
+        # Resource Limits (Crucial for stability)
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        # Security Context
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+        # Probes ensure traffic only routes to healthy pods
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3001
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: production
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3001
+</pre>
+
+    <h3>4.2 Horizontal Pod Autoscaler (HPA)</h3>
+    <p>To ensure scalability during traffic spikes, apply an HPA for the backend.</p>
+<pre>
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+</pre>
+    <div class="note"><strong>Action:</strong> Apply manifests using <code>kubectl apply -f k8s/</code>. Ensure you have created the namespace first: <code>kubectl create namespace production</code>.</div>
+
+    <h2 id="cicd">5. Continuous Integration & Deployment (CI/CD)</h2>
+    <p>We utilize GitHub Actions to automate testing, building, and deployment.</p>
+    
+    <h3>5.1 GitHub Actions Workflow (<code>.github/workflows/deploy.yml</code>)</h3>
+<pre>
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push Backend Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: backend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Update KubeConfig
+        run: aws eks update-kubeconfig --name production-cluster --region us-east-1
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Replace image tag dynamically in deployment
+          sed -i "s/latest/${{ github.sha }}/g" k8s/backend.yaml
+          kubectl apply -f k8s/backend.yaml -n production
+</pre>
+
+    <h2 id="monitoring">6. Monitoring & Observability</h2>
+    <p>A production system is blind without monitoring. Implement the following stack:</p>
+    <ul>
+        <li><strong>Metrics:</strong> Install Prometheus and Grafana using the official Helm charts.</li>
+        <li><strong>Command:</strong> <code>helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --create-namespace</code></li>
+        <li><strong>Logs:</strong> Deploy Fluent Bit as a DaemonSet to forward container logs to Elasticsearch/OpenSearch.</li>
+        <li><strong>Alerting:</strong> Configure Alertmanager (bundled with kube-prometheus-stack) to send Slack or PagerDuty alerts if CPU > 85% or Pods are crashing.</li>
+    </ul>
+
+    <h2 id="troubleshooting">7. Operational Troubleshooting Guide</h2>
+    <p>As a DevOps Engineer, you will face incidents. Follow these precise steps to diagnose and resolve common issues.</p>
+
+    <table>
+        <tr>
+            <th>Symptom / Error</th>
+            <th>Root Cause Analysis Steps</th>
+            <th>Resolution Approach</th>
+        </tr>
+        <tr>
+            <td><strong>CrashLoopBackOff</strong><br>(Pod keeps restarting)</td>
+            <td>
+                1. <code>kubectl logs &lt;pod-name&gt; -p</code> (Check previous container logs).<br>
+                2. Look for application errors (e.g., missing ENV vars, database connection refused).
+            </td>
+            <td>Fix the application code, update the ConfigMap/Secret, and trigger a rolling restart: <code>kubectl rollout restart deployment backend</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>ImagePullBackOff / ErrImagePull</strong></td>
+            <td>
+                1. <code>kubectl describe pod &lt;pod-name&gt;</code><br>
+                2. Check the Events section at the bottom.
+            </td>
+            <td>Verify the image tag exists in ECR. Ensure the Kubernetes nodes have the correct IAM role permissions to pull from the registry.</td>
+        </tr>
+        <tr>
+            <td><strong>Pending Pods</strong></td>
+            <td>
+                1. <code>kubectl get events --sort-by='.metadata.creationTimestamp'</code><br>
+                2. Usually caused by insufficient CPU/Memory in the cluster.
+            </td>
+            <td>Check Cluster Autoscaler logs. Scale up the EKS Node Group manually if autoscaling is failing, or adjust Pod Resource Requests.</td>
+        </tr>
+        <tr>
+            <td><strong>502 Bad Gateway / 503 Service Unavailable</strong></td>
+            <td>
+                1. Check if Endpoints exist: <code>kubectl get endpoints backend-service</code>.<br>
+                2. If none, check if Pods are passing their Readiness Probes.
+            </td>
+            <td>If pods are running but not ready, the app might be deadlocked. Check app logs. If endpoints exist, check Ingress Controller logs.</td>
+        </tr>
+    </table>
+
+    <div class="note">
+        <strong>Final Rule for Junior Engineers:</strong> When in doubt, read the logs. Do not execute destructive commands (like deleting PVCs or state files) without consulting a Senior Engineer. Automation is your friend; manual fixes in production are your enemy.
+    </div>
+
+</body>
+</html>
