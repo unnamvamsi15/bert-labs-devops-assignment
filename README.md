@@ -1,6 +1,6 @@
 # bert-labs-devops-assignment
 
-# Senior DevOps Engineer Assignment
+# DevOps Engineer Assignment
 
 ## Overview
 Production-ready deployment strategy for a cloud-native application.
